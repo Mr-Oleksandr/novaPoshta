@@ -1,6 +1,6 @@
 import axios from 'axios'
 export const novaPoshtaURL = 'https://api.novaposhta.ua/v2.0/json/';
-export const novaPoshtaAPIKEY = '3c34390ca4d3a3b2b97eeb228159beea';
+export const novaPoshtaAPIKEY = '28cbadab6e99ec80267afee18954a73e';
 
 const novaPoshtaAPI = axios.create({
     baseURL: novaPoshtaURL,

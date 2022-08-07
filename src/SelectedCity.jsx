@@ -1,7 +1,7 @@
-import React,{useState, useEffect}from 'react';
-import AsyncSelect, {components } from "react-select";
+import React,{ useState, useEffect } from 'react';
+import AsyncSelect, { components } from "react-select";
 import { useController } from "react-hook-form";
-import {novaPoshtaAPI} from "./API";
+import { novaPoshtaAPI } from "./API";
 
 const MenuList = ({ children, ...props }) => {
     const limit = 100;
@@ -21,8 +21,8 @@ const MenuList = ({ children, ...props }) => {
 const SelectedCity = ({ control, name }) => {
     const { field: { onChange } } = useController({ name, control, rules: { required: 'Some error' } })
     const [options, setOptions] = useState([]);
-    useEffect(async () => {
-        await loadOptions();
+    useEffect(() => {
+        loadOptions();
     }, [])
 
     const loadOptions = async () => {
@@ -39,14 +39,13 @@ const SelectedCity = ({ control, name }) => {
             ));
             setOptions(dataOptions);
         } catch (err) {
-            console.log(err); // eslint-disable
+            console.log(err);
         }
     };
 
     return (
         <div>
             <AsyncSelect
-                // filterOption={createFilter({ ignoreAccents: false })}
                 isClearable
                 options={options}
                 components={{

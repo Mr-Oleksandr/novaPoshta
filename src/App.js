@@ -1,23 +1,15 @@
-import React, {useCallback} from 'react'
-import Select, { createFilter }  from 'react-select'
+import React from 'react'
 import './App.css';
-import {useEffect, useMemo, useState} from "react";
-import TextInput from 'react-autocomplete-input';
-import {novaPoshtaAPI} from "./API";
+import {useEffect, useState} from "react";
+import {novaPoshtaAPI, novaPoshtaAPIKEY} from "./API";
 import {useForm} from "react-hook-form";
 import SelectedCity from "./SelectedCity";
 
 function App() {
-
     const [offices, setOffices] = useState({
         data: [],
         loading: true,
         error: null,
-    });
-    console.log(offices)
-    const [selectedCity, setSelectedCity] = useState({
-        id:'',
-        name:''
     });
 
     const [recipientOffices, setRecipientOffices] = useState({
@@ -25,34 +17,39 @@ function App() {
         loading: true,
         error: null,
     });
-    const [selectedRecipientCity, setSelectedRecipientCity] = useState({
-        id:'',
-        name:''
-    });
 
-    const [refSender, setRefSender] = useState('')
+    const [refSender, setRefSender] = useState('');
+    const [refSenderCounterParty, setRefSenderCounterParty] = useState('');
+    const [refRecipientCounterParty, setRefRecipientCounterParty] = useState('');
 
-    const [inputs, setInputs] = useState({
-        description:'',
-        price:'',
-        weight:'',
-        payerType:'Recipient',
-        paymentMethod:'Cash',
-        dateTime:'',
-        cargoType:'Одяг',
-        sender:'',
-        citySender:'',
-        senderAddress:'',
-        recipientsPhone:'',
-        recipientName:'',
-        recipientSurname:'',
-        recipientFullName:'',
-        recipientCityName:''
-    })
+    const openBlob = (data, type) => {
+        const file = new Blob([data], {
+            type: type.indexOf('pdf') === 0 ? 'application/pdf' : 'text/html',
+        });
+        const url = URL.createObjectURL(file);
+        window.open(url, '_blank');
+    }
+
+    const redirectToPrint = async () => {
+        const npRef = '5fdb5f02-165f-11ed-a60f-48df37b921db';
+        const { data } = await novaPoshtaAPI.post('', {
+            modelName: "InternetDocument",
+            calledMethod: "printFull",
+            methodProperties: {
+                DocumentRefs: [npRef],
+                Type: "pdf",
+                printForm: "Marking_100x100",
+                Position: ""
+            },
+        }, { headers: { 'Content-Type': 'application/pdf' }, responseType: 'blob' });
+        openBlob(data, 'pdf');
+        return null;
+    }
 
     const {
-        register, handleSubmit, setValue, control, watch, getValues, errors
+        register, handleSubmit, control, watch, getValues, errors
     } = useForm({
+        mode: 'onChange',
         defaultValues:{
             description:'',
             price:'',
@@ -73,63 +70,95 @@ function App() {
         }
     });
 
-    const onSubmit = (v) => {
-        novaPoshtaAPI.post('', {
+    const onSubmit = async (v) => {
+        // ContactRecipient - contactPersonGeneral.Ref
+        const { data: contactPersonGeneral } = await novaPoshtaAPI.post('', {
+            modelName: "ContactPersonGeneral",
+            calledMethod: "save",
+            methodProperties: {
+                CounterpartyRef: refRecipientCounterParty,
+                FirstName: v.recipientName,
+                LastName: v.recipientSurname,
+                MiddleName: v.recipientFullName || '',
+                Phone: v.recipientsPhone,
+            },
+        });
+        console.log(contactPersonGeneral?.data, contactPersonGeneral?.data?.[0], contactPersonGeneral?.data?.[0]?.Ref)
+        const response = await novaPoshtaAPI.post('', {
             modelName: "InternetDocument",
             calledMethod: "save",
             methodProperties: {
                 PayerType: 'Recipient',
                 PaymentMethod: 'Cash',
-                DateTime: `${new Date().getDate()}.0${new Date().getMonth()}.${new Date().getFullYear()}`,
+                DateTime: new Date().toLocaleString('uk-UA').split(',')[0],
                 CargoType: "Cargo",
                 Weight: v.weight,
                 ServiceType: "WarehouseWarehouse",
-                SeatsAmount: "2",
+                SeatsAmount: "1",
                 Description: v.description,
                 Cost: v.price,
+                ParamsOptionsSeats: true,
                 CitySender: v.citySender.value,
-                Sender: refSender,
+                Sender: refSenderCounterParty,
+                Recipient: refRecipientCounterParty,
                 SenderAddress: v.senderAddress,
-                ContactSender: refSender,
-                SendersPhone: "380660123123",
-                RecipientCityName: v.recipientCityName.label,
-                RecipientAddress: v.recipientAddress.value,
-                RecipientName: `${v.recipientName} ${v.recipientSurname} ${v.recipientFullName}`,
-                RecipientsPhone: v.recipientsPhone,
-                RecipientType: "PrivatePerson",
-                EDRPOU: "12345678"
+                ContactSender: refSender?.Ref,
+                ContactRecipient: contactPersonGeneral?.data?.[0]?.Ref,
+                SendersPhone: refSender?.Phones,
+                CityRecipient: v.recipientCityName.value,
+                RecipientAddress: v.recipientAddress,
+                RecipientsPhone: `38${v.recipientsPhone}`,
             }
-        })
-        console.log( v.recipientAddress.value,)
+        });
+        console.log(response)
     }
-
-    const handleChange = (e) => {
-        const id = e.target.id;
-        const value = e.target.value;
-        setInputs(prevValue => ({...prevValue, [id]: value}))
-    }
-
-
-    const handleRecipientCitySelect = (city) => {
-        setSelectedRecipientCity(city);
-        setValue('recipientCityName',city)
-    };
-
-
-
 
     useEffect(() => {
         novaPoshtaAPI.post('', {
             modelName: "Counterparty",
             calledMethod: "getCounterparties",
             methodProperties: {
-                CounterpartyProperty: "Sender"
+                CounterpartyProperty: "Sender",
+                GetPrivatePerson: "1",
             }
         })
             .then(({data : {data}}) => {
-                setRefSender(data[0].Ref)
+                setRefSenderCounterParty(data[0].Ref)
             })
-    }, [])
+    }, []);
+    useEffect(() => {
+        novaPoshtaAPI.post('', {
+            modelName: "Counterparty",
+            calledMethod: "getCounterparties",
+            methodProperties: {
+                CounterpartyProperty: "Recipient",
+                GetPrivatePerson: "1",
+            }
+        })
+            .then(({data : {data}}) => {
+                setRefRecipientCounterParty(data[0].Ref)
+            })
+    }, []);
+
+    useEffect(() => {
+        if (refSenderCounterParty) {
+            novaPoshtaAPI.post('', {
+                modelName: "ContactPersonGeneral",
+                calledMethod: "getContactPersonsList",
+                methodProperties: {
+                    CounterpartyRef: refSenderCounterParty,
+                    ContactProperty: "Sender",
+                    Limit: 200,
+                    Page: 1,
+                    getContactPersonAddress: 1,
+                    FindByString: ""
+                }
+            })
+                .then(({data : {data}}) => {
+                    setRefSender(data[0])
+                })
+        }
+    }, [refSenderCounterParty]);
 
     useEffect(() => {
         if (watch('recipientCityName')) {
@@ -178,10 +207,6 @@ function App() {
                 });
         }
     }, [watch('citySender')?.value]);
-    console.log(errors)
-    console.log(recipientOffices)
-
-
 
   return (
     <div className="App">
@@ -192,8 +217,6 @@ function App() {
                            <label htmlFor="description">Опис відправлення</label>
                            <input name="description"
                                   ref={register({ required: 'Error' })}
-                                  onChange={handleChange}
-                                  value={inputs.description}
                                   type="text"
                                   className="form-control"
                                   id="description"
@@ -202,9 +225,7 @@ function App() {
                        <div className="form-group col-md-6">
                            <label htmlFor="price">Оголошена вартість</label>
                            <input
-                               onChange={handleChange}
                                ref={register({ required: 'Error' })}
-                               value={inputs.price}
                                type="text"
                                className="form-control"
                                name="price"
@@ -214,8 +235,7 @@ function App() {
                    </div>
                    <div className="form-group">
                        <label htmlFor="weight">Загальна вага</label>
-                       <input onChange={handleChange}
-                              value={inputs.weight}
+                       <input
                               ref={register({ required: 'Error' })}
                               type="text" className="form-control"
                               name="weight"
@@ -225,14 +245,14 @@ function App() {
                    <div className="form-group">
                        <label htmlFor="disabledTextInput">Відправник</label>
                        <input
-                           onChange={handleChange}
-                           ref={register({ required: 'Error' })}
-                           type="text"
-                              id="sender"
-                              name="sender"
-                              className="form-control"
-                              value="Ковальов Олександр Вікторович +380 (96) 492-63-30"
-                              />
+                            ref={register({ required: 'Error' })}
+                            type="text"
+                            id="sender"
+                            name="sender"
+                            className="form-control"
+                            disabled
+                            value={`${refSender.Description} +${refSender.Phones}`}
+                      />
                    </div>
                    <div className="form-row">
 
@@ -260,7 +280,7 @@ function App() {
                        <div className="form-row">
                            <div className="form-group col-md-6">
                                <label htmlFor="recipientsPhone">Номер телефону</label>
-                               <input onChange={handleChange}
+                               <input
                                       ref={register({ required: 'Error' })}
                                       name='recipientsPhone'
                                       type="text"
@@ -270,7 +290,7 @@ function App() {
                            </div>
                            <div className="form-group col-md-6">
                                <label htmlFor="recipientSurname">Прізвище</label>
-                               <input onChange={handleChange}
+                               <input
                                       ref={register({ required: 'Error' })}
                                       type="text"
                                       className="form-control"
@@ -280,7 +300,7 @@ function App() {
                            </div>
                            <div className="form-group col-md-6">
                                <label htmlFor="recipientName">Імя</label>
-                               <input onChange={handleChange}
+                               <input
                                       ref={register({ required: 'Error' })}
                                       type="text"
                                       className="form-control"
@@ -290,12 +310,13 @@ function App() {
                            </div>
                            <div className="form-group col-md-6">
                                <label htmlFor="recipientFullName">По батькові</label>
-                               <input onChange={handleChange}
-                                      type="text"
-                                      className="form-control"
-                                      id="recipientFullName"
-                                      name="recipientFullName"
-                                      placeholder="По батькові"/>
+                               <input
+                                ref={register({ required: 'Error' })}
+                                type="text"
+                                className="form-control"
+                                id="recipientFullName"
+                                name="recipientFullName"
+                                placeholder="По батькові"/>
                            </div>
                        </div>
                    </div>
@@ -319,6 +340,7 @@ function App() {
                        </div>
                    </div>
                    <button type="submit" className="btn btn-primary">Створити накладну</button>
+                   <button type="button" onClick={redirectToPrint} className="btn btn-primary">Роздрукувати</button>
                </form>
            </div>
     </div>
